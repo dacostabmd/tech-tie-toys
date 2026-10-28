@@ -1,0 +1,23 @@
+[Unit]
+Description=Tech Tie Toys (Next.js + Socket.IO)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=techtietoys
+WorkingDirectory=/opt/techtietoys/app
+Environment=NODE_ENV=production
+Environment=PORT=3100
+Environment=NODE_OPTIONS=--max-old-space-size=512
+ExecStart=/opt/techtietoys/app/node_modules/.bin/tsx server.ts
+Restart=always
+RestartSec=5
+# A VPS é compartilhada: limita memória e dá prioridade menor de CPU que os outros sistemas.
+MemoryMax=900M
+MemoryHigh=700M
+CPUWeight=80
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

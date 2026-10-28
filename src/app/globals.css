@@ -1,0 +1,268 @@
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 600px at 15% -10%, rgba(201, 164, 60, 0.08), transparent 60%),
+    radial-gradient(900px 500px at 110% 110%, rgba(59, 36, 24, 0.35), transparent 60%),
+    var(--mantine-color-body);
+  background-attachment: fixed;
+}
+
+/* Night mode mirrors the splash: warm black with a soft gold glow. */
+[data-mantine-color-scheme="dark"] body {
+  background:
+    radial-gradient(1100px 700px at 50% 30%, #1f1b14 0%, transparent 70%),
+    radial-gradient(900px 500px at 110% 110%, rgba(59, 36, 24, 0.35), transparent 60%),
+    #0b0a09;
+  background-attachment: fixed;
+}
+
+/* Splash screen (IntroGate) */
+.intro-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 45%, #1f1b14 0%, #0b0a09 65%);
+}
+
+.intro-logo {
+  width: min(500px, 80vw);
+  height: auto;
+  filter: drop-shadow(0 8px 24px rgba(201, 164, 60, 0.2));
+}
+
+.gate-enter-btn,
+.gold-slide-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  padding: 0 24px;
+  background: transparent;
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  overflow: hidden;
+  outline: none;
+  text-decoration: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.15s ease, opacity 0.2s ease;
+}
+
+.gold-slide-btn.full-width {
+  width: 100%;
+}
+
+.gold-slide-btn.size-xs {
+  height: 28px;
+  padding: 0 12px;
+}
+.gold-slide-btn.size-xs .gold-slide-content {
+  font-size: 12px;
+  gap: 6px;
+}
+
+.gold-slide-btn.size-sm {
+  height: 32px;
+  padding: 0 16px;
+}
+.gold-slide-btn.size-sm .gold-slide-content {
+  font-size: 13px;
+  gap: 6px;
+}
+
+.gold-slide-btn.size-md {
+  height: 38px;
+  padding: 0 24px;
+}
+.gold-slide-btn.size-md .gold-slide-content {
+  font-size: 14px;
+  gap: 8px;
+}
+
+.gold-slide-btn.size-lg {
+  height: 44px;
+  padding: 0 28px;
+}
+.gold-slide-btn.size-lg .gold-slide-content {
+  font-size: 15px;
+  gap: 10px;
+}
+
+.gold-slide-btn:disabled,
+.gold-slide-btn[aria-disabled="true"] {
+  opacity: 0.65;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.gate-enter-btn:focus-visible,
+.gold-slide-btn:focus-visible {
+  outline: 2px solid var(--mantine-color-gold-5, #d4b14a);
+  outline-offset: 3px;
+}
+
+.gate-enter-bg,
+.gold-slide-bg {
+  position: absolute;
+  inset: 0;
+  background: var(--mantine-primary-color-filled, #c9a43c);
+  border-radius: inherit;
+  transform: translateX(0);
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.gate-enter-btn:hover:not(:disabled) .gate-enter-bg,
+.gold-slide-btn:hover:not(:disabled) .gold-slide-bg {
+  transform: translateX(101%);
+}
+
+.gate-enter-content,
+.gold-slide-content {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: color 0.35s cubic-bezier(0.22, 1, 0.36, 1), text-shadow 0.35s ease;
+  pointer-events: none;
+  width: 100%;
+}
+
+.gate-enter-btn:hover:not(:disabled) .gate-enter-content,
+.gold-slide-btn:hover:not(:disabled) .gold-slide-content {
+  color: var(--mantine-color-gold-5, #d4b14a);
+  text-shadow: 0 0 14px rgba(201, 164, 60, 0.5);
+}
+
+.gate-enter-icon,
+.gold-slide-icon {
+  display: flex;
+  align-items: center;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.gate-enter-btn:hover:not(:disabled) .gate-enter-icon,
+.gold-slide-btn:hover:not(:disabled) .gold-slide-icon {
+  transform: translateX(3px);
+}
+
+.gate-enter-btn:active:not(:disabled),
+.gold-slide-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Switch / SegmentedControl: track sem background */
+.mantine-SegmentedControl-root {
+  background-color: transparent !important;
+}
+
+/* Room screen animated tabs */
+.room-tabs-list .mantine-Tabs-tab {
+  position: relative;
+  border-bottom: 2px solid transparent !important;
+  transition: color 0.2s ease;
+}
+
+.room-tabs-list .mantine-Tabs-tab[data-active] {
+  border-bottom-color: transparent !important;
+  color: var(--mantine-primary-color-filled, #c9a43c) !important;
+}
+
+/* Isometric-ish lounge floor for social rooms */
+/* Lounge performance: each walker gets its own GPU layer, so a character's repaint
+   (breathing, blinking, walking) re-rasterizes only that small layer, not the floor or the others. */
+.lounge-walker {
+  will-change: transform;
+  contain: layout style;
+}
+
+/* Breathing as a tiny vertical scale from the waist instead of the handoff's 1.2px translate:
+   a sub-pixel translate snaps to whole pixels on GPU raster and looks like ~3 fps; a scale is
+   filtered, so it stays smooth. Same amplitude at the top of the head. Character.tsx is untouched. */
+@keyframes ttt-breathe-scale {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.014);
+  }
+}
+.ttt-char g.upper {
+  animation-name: ttt-breathe-scale;
+}
+
+.lounge-floor {
+  background-color: #17172b;
+  background-image:
+    linear-gradient(45deg, rgba(139, 92, 246, 0.08) 25%, transparent 25%, transparent 75%, rgba(139, 92, 246, 0.08) 75%),
+    linear-gradient(45deg, rgba(139, 92, 246, 0.08) 25%, transparent 25%, transparent 75%, rgba(139, 92, 246, 0.08) 75%);
+  background-size: 48px 48px;
+  background-position: 0 0, 24px 24px;
+}
+
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.animate-bob {
+  animation: bob 1.6s ease-in-out infinite;
+}
+
+/* react-resizable-panels separators */
+.resize-handle {
+  flex: 0 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+}
+.resize-handle::after {
+  content: "";
+  border-radius: 4px;
+  background: var(--mantine-color-dark-4);
+  transition: background 120ms;
+}
+.resize-handle[aria-orientation="vertical"]::after {
+  width: 3px;
+  height: 40px;
+}
+.resize-handle[aria-orientation="horizontal"]::after {
+  width: 40px;
+  height: 3px;
+}
+.resize-handle:hover::after,
+.resize-handle[data-separator="hover"]::after,
+.resize-handle[data-separator="active"]::after,
+.resize-handle[data-separator="focus"]::after {
+  background: var(--mantine-color-gold-5);
+}
+
+.yt-host > iframe {
+  width: 100%;
+  height: 100%;
+  display: block;
+}

@@ -1,0 +1,26 @@
+# LiveKit Server — Tech Tie Toys (VPS KVM2)
+# Copie para /opt/techtietoys/livekit/livekit.yaml e troque os valores marcados com TROCAR.
+port: 7880 # sinalização (WebSocket) — fica atrás do Nginx, não abrir no firewall
+log_level: info
+
+rtc:
+  tcp_port: 7881 # fallback TCP quando UDP é bloqueado
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true
+
+keys:
+  # chave: segredo (gere com: openssl rand -hex 16 / openssl rand -base64 32)
+  TROCAR_API_KEY: TROCAR_API_SECRET
+
+room:
+  empty_timeout: 300 # fecha sala vazia após 5 min
+  max_participants: 120
+
+turn:
+  enabled: true
+  domain: live.TROCAR_DOMINIO # mesmo subdomínio da sinalização
+  udp_port: 3478
+  # TURN/TLS na 5349 atravessa firewalls corporativos, mas exige certificado montado no container.
+  # Ative depois do MVP se usuários de empresas não conseguirem assistir.
+  tls_port: 0
