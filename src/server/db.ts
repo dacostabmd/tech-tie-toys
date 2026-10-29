@@ -2,6 +2,8 @@ import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 import { itemsOf, normalizeOwned, presetFor, sanitizeAvatar } from "@/lib/avatar";
+import { FURNITURE, type FurnitureId, type PlacedFurniture } from "@/components/lounge/catalog";
+import { BASE_LAYOUT, baseItemsValid, countPlaced, sanitizeCounts, sanitizeLayout, type FurnitureCounts } from "@/lib/lounge";
 import type { AvatarConfig, ChatMessage, Me, NowPlaying, PublicUser, QueueItem, RoomInfo, RoomMode, RoomModeration } from "@/lib/types";
 
 // Shared by the Next.js route handlers and the Socket.IO server (server.ts).
@@ -58,6 +60,11 @@ function open() {
       data TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS room_layout (
+      room_id TEXT PRIMARY KEY REFERENCES rooms(id) ON DELETE CASCADE,
+      data TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS ratings (
       media_key TEXT NOT NULL,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -72,6 +79,7 @@ function open() {
   if (!cols.has("earned_day")) db.exec("ALTER TABLE users ADD COLUMN earned_day TEXT NOT NULL DEFAULT ''");
   const roomCols = new Set((db.prepare("PRAGMA table_info(rooms)").all() as { name: string }[]).map((c) => c.name));
   if (!roomCols.has("moderation")) db.exec("ALTER TABLE rooms ADD COLUMN moderation TEXT NOT NULL DEFAULT '{}'");
+  if (!cols.has("furniture")) db.exec("ALTER TABLE users ADD COLUMN furniture TEXT NOT NULL DEFAULT '{}'");
   if (!cols.has("earned_today")) db.exec("ALTER TABLE users ADD COLUMN earned_today INTEGER NOT NULL DEFAULT 0");
   return db;
 }
@@ -85,6 +93,7 @@ interface UserRow {
   tokens: number;
   avatar: string;
   owned: string;
+  furniture: string;
 }
 
 /** Old-format or broken avatars (from before the character system) get a preset. */
@@ -93,6 +102,14 @@ function parseAvatar(raw: string, userId: number): AvatarConfig {
     return sanitizeAvatar(JSON.parse(raw)) ?? presetFor(userId);
   } catch {
     return presetFor(userId);
+  }
+}
+
+function parseCounts(raw: string | undefined): FurnitureCounts {
+  try {
+    return sanitizeCounts(JSON.parse(raw ?? "{}"));
+  } catch {
+    return {};
   }
 }
 
@@ -105,6 +122,7 @@ export function toMe(row: UserRow): Me {
     avatar,
     // What is equipped counts as owned: it was either paid for on save or is the preset the user got.
     owned: [...new Set([...normalizeOwned(JSON.parse(row.owned) as string[]), ...itemsOf(avatar)])],
+    furniture: parseCounts(row.furniture),
   };
 }
 
@@ -150,6 +168,78 @@ export function saveAvatar(userId: number, avatar: AvatarConfig, owned: string[]
     .prepare("UPDATE users SET avatar = ?, owned = ?, tokens = tokens - ? WHERE id = ? AND tokens >= ? RETURNING tokens")
     .get(JSON.stringify(avatar), JSON.stringify(owned), cost, userId, cost) as { tokens: number } | undefined;
   return row?.tokens ?? null;
+}
+
+/** Buys one piece of furniture. Returns the new balance and inventory, or null if the user can't afford it. */
+export function buyFurniture(userId: number, id: FurnitureId): { tokens: number; furniture: FurnitureCounts } | null {
+  const price = FURNITURE[id].price;
+  const row = db.prepare("SELECT furniture FROM users WHERE id = ?").get(userId) as { furniture: string } | undefined;
+  if (!row) return null;
+  const furniture = parseCounts(row.furniture);
+  furniture[id] = (furniture[id] ?? 0) + 1;
+  // node:sqlite is synchronous, so nothing runs between the read above and this guarded update.
+  const upd = db
+    .prepare("UPDATE users SET tokens = tokens - ?, furniture = ? WHERE id = ? AND tokens >= ? RETURNING tokens")
+    .get(price, JSON.stringify(furniture), userId, price) as { tokens: number } | undefined;
+  return upd ? { tokens: upd.tokens, furniture } : null;
+}
+
+export function getRoomLayout(roomId: string): PlacedFurniture[] {
+  const row = db.prepare("SELECT data FROM room_layout WHERE room_id = ?").get(roomId) as { data: string } | undefined;
+  if (!row) return BASE_LAYOUT.map((p) => ({ ...p }));
+  try {
+    return sanitizeLayout(JSON.parse(row.data)) ?? BASE_LAYOUT.map((p) => ({ ...p }));
+  } catch {
+    return BASE_LAYOUT.map((p) => ({ ...p }));
+  }
+}
+
+/** Paid furniture the user already has placed in their other rooms (a piece can only be in one place). */
+function placedElsewhere(userId: number, exceptRoomId: string): FurnitureCounts {
+  const rows = db
+    .prepare("SELECT l.data FROM room_layout l JOIN rooms r ON r.id = l.room_id WHERE r.owner_id = ? AND l.room_id != ?")
+    .all(userId, exceptRoomId) as { data: string }[];
+  const out: FurnitureCounts = {};
+  for (const row of rows) {
+    try {
+      const layout = sanitizeLayout(JSON.parse(row.data)) ?? [];
+      for (const [id, n] of Object.entries(countPlaced(layout))) out[id as FurnitureId] = (out[id as FurnitureId] ?? 0) + n;
+    } catch {
+      // a broken layout row uses nothing
+    }
+  }
+  return out;
+}
+
+/** What the owner has placed across all their rooms, for the "colocados" counter. */
+export function furniturePlacedBy(userId: number): FurnitureCounts {
+  return placedElsewhere(userId, "");
+}
+
+export type SaveLayoutResult = { ok: true; placed: FurnitureCounts } | { ok: false; error: string };
+
+/** Saves the room layout after checking the owner really has every piece they placed. */
+export function saveRoomLayout(roomId: string, ownerId: number, layout: PlacedFurniture[]): SaveLayoutResult {
+  if (!baseItemsValid(layout)) return { ok: false, error: "Layout inválido" };
+  const owner = db.prepare("SELECT furniture FROM users WHERE id = ?").get(ownerId) as { furniture: string } | undefined;
+  if (!owner) return { ok: false, error: "Usuário não encontrado" };
+  const owned = parseCounts(owner.furniture);
+  const elsewhere = placedElsewhere(ownerId, roomId);
+  const here = countPlaced(layout);
+  const total: FurnitureCounts = { ...elsewhere };
+  for (const [id, n] of Object.entries(here)) {
+    const k = id as FurnitureId;
+    total[k] = (total[k] ?? 0) + n;
+    if (total[k]! > (owned[k] ?? 0)) {
+      const free = Math.max(0, (owned[k] ?? 0) - (elsewhere[k] ?? 0));
+      return { ok: false, error: `Você só tem ${free} de "${FURNITURE[k].name}" para esta sala` };
+    }
+  }
+  db.prepare(
+    `INSERT INTO room_layout (room_id, data, updated_at) VALUES (?, ?, datetime('now'))
+     ON CONFLICT(room_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+  ).run(roomId, JSON.stringify(layout));
+  return { ok: true, placed: total };
 }
 
 export function listRooms(): RoomInfo[] {

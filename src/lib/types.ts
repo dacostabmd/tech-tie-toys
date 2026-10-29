@@ -3,6 +3,8 @@ export type MediaKind = "auto" | "music" | "video" | "movie";
 export type MediaSource = "youtube" | "file";
 
 import type { CharacterConfig } from "@/components/character/catalog";
+import type { PlacedFurniture } from "@/components/lounge/catalog";
+import type { FurnitureCounts } from "./lounge";
 
 export type AvatarConfig = CharacterConfig;
 
@@ -15,6 +17,8 @@ export interface PublicUser {
 export interface Me extends PublicUser {
   tokens: number;
   owned: string[];
+  /** Furniture inventory: how many of each piece the user has bought. */
+  furniture: FurnitureCounts;
 }
 
 /** Chat moderation set by the room owner (the base profanity list always applies). */
@@ -82,6 +86,10 @@ export interface RoomState {
   stream: StreamInfo | null;
   skipVotes: number;
   serverNow: number;
+  /** Lounge furniture (social rooms). */
+  furniture: PlacedFurniture[];
+  /** Pieces the receiving user has placed across all their rooms (for the inventory counter). */
+  furniturePlaced?: FurnitureCounts;
 }
 
 export interface Analysis {

@@ -14,7 +14,22 @@ import type {
   RoomState,
   StreamInfo,
 } from "@/lib/types";
-import { addTokens, deleteRoom, getRoom, getRoomModeration, getUser, loadRoomState, saveRoomModeration, saveRoomState, toPublic } from "./db";
+import {
+  addTokens,
+  deleteRoom,
+  furniturePlacedBy,
+  getRoom,
+  getRoomLayout,
+  getRoomModeration,
+  getUser,
+  loadRoomState,
+  saveRoomLayout,
+  saveRoomModeration,
+  saveRoomState,
+  toPublic,
+} from "./db";
+import { sanitizeLayout } from "@/lib/lounge";
+import type { PlacedFurniture } from "@/components/lounge/catalog";
 import { SESSION_COOKIE, parseCookie, userFromToken } from "./auth";
 import { fetchMeta } from "./metadata";
 import { liveIdentity, liveKitConfigured, liveKitToken } from "./livekit";
@@ -32,6 +47,7 @@ interface RoomRuntime {
   current: NowPlaying | null;
   chat: ChatMessage[];
   presence: Map<string, Presence>;
+  furniture: PlacedFurniture[];
   stream: StreamInfo | null;
   skipVotes: Set<number>;
   timer: NodeJS.Timeout | null;
@@ -84,6 +100,7 @@ function runtime(roomId: string): RoomRuntime | null {
     current: saved?.current ?? null,
     chat: saved?.chat ?? [],
     presence: new Map(),
+    furniture: info.mode === "social" ? getRoomLayout(roomId) : [],
     stream: null,
     skipVotes: new Set(),
     timer: null,
@@ -103,7 +120,7 @@ export function onlineCounts() {
   return out;
 }
 
-function snapshot(r: RoomRuntime): RoomState {
+function snapshot(r: RoomRuntime, viewerId?: number): RoomState {
   return {
     room: r.info,
     queue: r.queue,
@@ -113,6 +130,8 @@ function snapshot(r: RoomRuntime): RoomState {
     stream: r.stream,
     skipVotes: r.skipVotes.size,
     serverNow: Date.now(),
+    furniture: r.furniture,
+    furniturePlaced: viewerId === r.info.ownerId ? furniturePlacedBy(viewerId) : undefined,
   };
 }
 
@@ -242,7 +261,7 @@ export function attachRooms(io: Server) {
         clearTimeout(r.emptyTimer);
         r.emptyTimer = null;
       }
-      const presence: Presence = { ...user(), socketId: socket.id, x: 20 + Math.random() * 60, y: 30 + Math.random() * 50 };
+      const presence: Presence = { ...user(), socketId: socket.id, x: 20 + Math.random() * 60, y: 40 + Math.random() * 50 };
       r.presence.set(socket.id, presence);
       // Restored from the database after a restart: resume the timer, or move on if the video already ended.
       if (r.current && !r.timer) {
@@ -250,7 +269,7 @@ export function attachRooms(io: Server) {
         if (Date.now() >= end) advance(r);
         else schedule(r);
       }
-      socket.emit("room:state", snapshot(r));
+      socket.emit("room:state", snapshot(r, user().id));
       socket.to(r.info.id).emit("presence:update", [...r.presence.values()]);
       ack?.({ ok: true });
     });
@@ -426,9 +445,28 @@ export function attachRooms(io: Server) {
       const p = r?.presence.get(socket.id);
       if (!r || !p || r.info.mode !== "social") return;
       if (!hit(`move:${socket.id}`, LIMITS.movePerSocket).ok) return;
-      p.x = Math.min(95, Math.max(5, Number(x) || 0));
-      p.y = Math.min(90, Math.max(10, Number(y) || 0));
+      // Percent of the 640 x 420 stage; the floor starts below the wall band (y ≈ 27%).
+      p.x = Math.min(96, Math.max(4, Number(x) || 0));
+      p.y = Math.min(99, Math.max(28, Number(y) || 0));
       emit(r.info.id, "presence:move", { socketId: socket.id, x: p.x, y: p.y });
+    });
+
+    // --- Lounge decoration (room owner only): the whole layout is sent and validated on every change ---
+    socket.on("furni:set", ({ furniture }: { furniture: unknown }, ack?: (res: { ok: boolean; error?: string; placed?: Record<string, number> }) => void) => {
+      const r = room();
+      if (!r || r.info.mode !== "social") return ack?.({ ok: false, error: "Sem lounge nesta sala" });
+      if (r.info.ownerId !== user().id) return ack?.({ ok: false, error: "Só o dono da sala pode decorar" });
+      if (!hit(`furni:${user().id}`, LIMITS.furniPerUser).ok) return ack?.({ ok: false, error: "Muitas alterações, aguarde um instante" });
+      const layout = sanitizeLayout(furniture);
+      const res = layout ? saveRoomLayout(r.info.id, user().id, layout) : ({ ok: false, error: "Layout inválido" } as const);
+      if (!layout || !res.ok) {
+        // Puts the sender's screen back in sync with what the server has.
+        socket.emit("furni:update", r.furniture);
+        return ack?.({ ok: false, error: res.ok ? "Layout inválido" : res.error });
+      }
+      r.furniture = layout;
+      emit(r.info.id, "furni:update", layout);
+      ack?.({ ok: true, placed: res.placed });
     });
 
     // --- Live screen/camera: Socket.IO holds the "one broadcaster per room" lock, LiveKit carries the media ---

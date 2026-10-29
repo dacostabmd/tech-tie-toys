@@ -9,7 +9,7 @@ Um "Plug.dj" moderno. Em cada sala as pessoas montam juntas uma fila de vídeos,
 3. [Variáveis de ambiente](#3-variáveis-de-ambiente)
 4. [Arquitetura](#4-arquitetura)
 5. [Funcionalidades](#5-funcionalidades)
-6. [Sistema de personagens e loja](#6-sistema-de-personagens-e-loja)
+6. [Sistema de personagens e loja](#6-sistema-de-personagens-e-loja) (inclui o [lounge e a mobília](#lounge-do-cinema-e-mobília))
 7. [Tokens e gamificação](#7-tokens-e-gamificação)
 8. [Moderação e segurança](#8-moderação-e-segurança)
 9. [Referência técnica](#9-referência-técnica) (banco, rotas da API, eventos do Socket.IO)
@@ -122,15 +122,19 @@ src/app/room/[id]/RoomScreen   tela da sala (painéis redimensionáveis, abas, m
 src/components/room/           Player, Chat, Lounge, Panels (IA, fila, playlists, avaliação, comentários),
                                SettingsPanel, hooks useRoom e useStream
 src/components/character/      Character.tsx (arte final do handoff) e catalog.ts (dados, usados também no servidor)
+src/components/lounge/         Furniture.tsx (arte dos 16 móveis) e catalog.ts (catálogo, preços e regras de colocação)
 src/components/Avatar.tsx      busto ou corpo do personagem para chat, navbar e listas
 src/components/LoginIntro.tsx  intro animada com som depois do login
 src/lib/avatar.ts              preços, validação, presets e regras de tokens
+src/lib/lounge.ts              validação do layout do lounge, contagem de móveis e base da sala
 src/lib/playerPrefs.ts         preferências do player de cada pessoa (salvas no navegador)
 src/lib/profanity.ts           lista de palavrões e filtro (sem dependências de IA)
 src/lib/moderation.ts          verificador com LangChain + Claude Haiku
 src/server/                    db, auth, sessão, salas, LiveKit, limite de taxa, metadados
 public/avatar/                 SVGs dos presets e miniaturas do editor
+public/lounge/furniture/       SVGs dos móveis (miniaturas da loja)
 tools/characters.js            fonte da arte dos personagens (gera Character.tsx e os SVGs); tools/generate.js é o gerador
+tools/furniture.js             fonte da arte dos móveis; tools/generate-furniture.js gera Furniture.tsx e os SVGs
 deploy/                        LiveKit (Docker), Nginx, systemd e o guia de deploy
 ```
 
@@ -148,7 +152,7 @@ deploy/                        LiveKit (Docker), Nginx, systemd e o guia de depl
 | **Avaliar** | Estrelas e crítica da comunidade, ao lado da nota da IA |
 | **Comentários** | Comentários do YouTube (precisa de `YOUTUBE_API_KEY`) |
 | **Playlists** | Por usuário: criar, adicionar o vídeo atual ou um link, mandar tudo para a fila |
-| **Lounge** (sala social) | Chão no estilo Habbo: clique para andar, as falas viram balões e o personagem anda, fala e olha para o lado |
+| **Lounge** (sala social) | Lounge de cinema: clique para andar, as falas viram balões, e o dono decora a sala com móveis comprados com tokens ([detalhes](#lounge-do-cinema-e-mobília)) |
 | **Sala profissional** | Sem lounge, tokens nem loja; participantes aparecem como lista de nomes |
 | **Transmissão** | Tela (com áudio) ou câmera e microfone via LiveKit, com um transmissor por vez |
 | **Configurações** (aba da sala) | Personagem (atalho para o editor), Vídeo & Player, e Filtro de Chat (editável só pelo dono) |
@@ -206,6 +210,39 @@ Os personagens vêm do handoff de design (`design_handoff_character_system`), na
 - O que está equipado conta como comprado. Por isso quem ganha um preset com itens pagos não é cobrado.
 - **Migração:** usuários do avatar antigo recebem um preset definido pelo id. Compras da loja antiga (coroa, boné, fone, óculos escuros, corrente, gravata, moicano, piscadinha) viram os itens equivalentes.
 
+
+### Lounge do cinema e mobília
+
+O cenário vem do handoff v4 (`Cinema Lounge`). Todos os móveis são SVGs independentes, recoloráveis por `--main` e `--accent`, com âncora na base central.
+
+**Cena**
+- Palco lógico de **640 × 420**, escalado para caber no painel (`Lounge.tsx`). Parede em y 0–104, chão abaixo.
+- Posições de pessoas e móveis são do palco, então ficam iguais em qualquer tamanho de tela. A presença continua em porcentagem do palco.
+- Ordem de desenho: tapete, parede, depois móveis e pessoas por `y` (quem está mais embaixo fica na frente). Os balões de fala ficam numa camada acima de tudo.
+- Clicar em cima de um móvel manda a pessoa para o ponto livre mais próximo (pegada `foot` de cada móvel). O caminho em linha reta não desvia dos móveis.
+
+**Quem decora**
+- Só o **dono da sala** coloca, move e guarda móveis. Visitantes veem a sala decorada e podem comprar móveis para as salas que criarem.
+- Cada peça comprada só pode estar em um lugar: o servidor soma o que o dono já colocou em todas as salas dele.
+- Toda sala social nasce com a **base** (a tela, grátis, que não sai do inventário). Dá para remover e restaurar no painel.
+
+**Catálogo** (preços em `FURNITURE`, em [src/components/lounge/catalog.ts](src/components/lounge/catalog.ts))
+
+| Categoria | Itens (tokens) |
+|---|---|
+| Assentos | poltrona 40, sofá 90 |
+| Lanchonete | pipoca 120, refri 110, bilheteria 150, mesinha 45 |
+| Decoração | fliperama 130, planta 25, tapete 60, cordão 35, abajur 30, lixeira 15 |
+| Parede | telão 300, pôster foguete 40, pôster clapete 40, neon 85 |
+
+**Regras no servidor**
+1. `POST /api/furniture` valida o id, confere o saldo e desconta o preço do catálogo numa única operação (`UPDATE … WHERE tokens >= preço`). Sem saldo, **402**.
+2. O evento `furni:set` só vale para o dono, em sala social, com limite de taxa. O layout é validado por `sanitizeLayout` (ids, no máximo 60 peças, posição presa ao chão ou à parede, cor hex) e por `saveRoomLayout` (estoque do dono, contando as outras salas dele).
+3. Peças da base só valem com o `uid` e o `id` originais, para ninguém criar móvel de graça.
+4. Se o servidor recusa, ele reenvia o layout verdadeiro e a tela do dono volta ao estado certo.
+
+**Arte e regeneração:** `tools/furniture.js` é a fonte e `tools/generate-furniture.js` gera `Furniture.tsx` e os SVGs. O CSS dos móveis (`FurnitureStyles`) é carregado uma vez no layout raiz.
+
 ---
 
 ## 7. Tokens e gamificação
@@ -256,6 +293,7 @@ Definidos em [src/server/rateLimit.ts](src/server/rateLimit.ts):
 | Fila | 10 vídeos por minuto |
 | Notas da IA / verificador | 10 e 20 por minuto por usuário |
 | Movimento no lounge / ações de moderação | 20 por segundo / 20 por minuto |
+| Decorar o lounge / comprar móvel | 30 por 10 s / 30 por minuto |
 
 Quem passa do limite na API recebe **429** com o cabeçalho `Retry-After`. O IP vem do Nginx (`X-Real-IP`).
 
@@ -273,10 +311,11 @@ Quem passa do limite na API recebe **429** com o cabeçalho `Retry-After`. O IP 
 
 | Tabela | Conteúdo |
 |---|---|
-| `users` | nome, hash da senha, `tokens`, `avatar` (JSON do personagem), `owned` (itens comprados), `earned_day`, `earned_today` |
+| `users` | nome, hash da senha, `tokens`, `avatar` (JSON do personagem), `owned` (itens do personagem), `furniture` (inventário de móveis, JSON `{id: quantidade}`), `earned_day`, `earned_today` |
 | `sessions` | token, usuário, validade |
 | `rooms` | nome, modo (`social`/`professional`), dono, `moderation` (JSON) |
 | `room_state` | fila, vídeo atual e chat de cada sala (JSON) |
+| `room_layout` | móveis colocados no lounge de cada sala (JSON) |
 | `playlists` / `playlist_items` | playlists por usuário |
 | `analyses` | cache das notas da IA por vídeo |
 | `ratings` | estrelas e crítica por vídeo e usuário |
@@ -292,6 +331,7 @@ As colunas novas são criadas automaticamente na inicialização, com `ALTER TAB
 | `/api/auth/logout` | POST | Sai |
 | `/api/me` | GET | Usuário atual (tokens, personagem, itens) |
 | `/api/avatar` | POST | Salva o personagem e compra os itens que faltam |
+| `/api/furniture` | POST | Compra um móvel com tokens (preço do catálogo no servidor) |
 | `/api/rooms` | GET / POST | Lista e cria salas |
 | `/api/rooms/online` | GET | Pessoas online por sala (servido direto pelo `server.ts`) |
 | `/api/playlists` | GET / POST | Playlists do usuário |
@@ -311,6 +351,7 @@ As colunas novas são criadas automaticamente na inicialização, com `ALTER TAB
 | `queue:add`, `queue:remove`, `queue:move` | Mexe na fila |
 | `player:duration`, `player:ended`, `player:skip` | Informa duração, fim e pedido de pular |
 | `presence:move` | Anda no lounge |
+| `furni:set` | Salva o layout do lounge (só o dono); o servidor valida tudo e responde com o total de peças em uso |
 | `presence:active` | Sinal de atividade, para os tokens |
 | `stream:start`, `stream:stop` | Pega e solta a vez de transmitir |
 | `stream:token` | Pede o token do LiveKit |
@@ -326,6 +367,7 @@ As colunas novas são criadas automaticamente na inicialização, com `ALTER TAB
 | `queue:update` | Fila atualizada |
 | `player:play`, `player:duration`, `player:skipVotes` | Mudanças no player |
 | `presence:update`, `presence:move` | Quem está na sala e onde |
+| `furni:update` | Layout do lounge mudou (ou o servidor desfez uma alteração recusada) |
 | `stream:update` | Transmissão começou ou parou |
 | `tokens:update` | Novo saldo |
 | `room:kicked` | Aviso para quem foi removido |
@@ -434,7 +476,14 @@ Também estão no [CLAUDE.md](CLAUDE.md).
 ### Fase 5: personagens v3
 - Atualização para o handoff v3: formato do rosto (5), 11 presets, 6 cabelos, 1 blusa, 8 acessórios e 3 peles de fantasia novos; gestos de acenar e comemorar no editor.
 - Peles de fantasia, formatos de rosto e os itens novos entraram na loja com preço em `PRICES`; o servidor valida `face` e cobra `skin:*` como item pago.
-- `tools/generate.js` e a arte (`public/avatar/`) atualizados. Falta o fundo do lounge e a mobília, que ainda não vieram no handoff.
+- `tools/generate.js` e a arte (`public/avatar/`) atualizados.
+
+### Fase 5: lounge do cinema e mobília (handoff v4)
+- Cenário novo: parede de 104 px com tela, piso cinza com xadrez, palco fixo de 640 × 420 que escala para caber no painel (redimensionável).
+- 16 móveis em SVG (assentos, lanchonete, decoração, parede), recoloríveis, com preço em tokens.
+- Loja e inventário dentro da aba Lounge; modo **Decorar** para arrastar, espelhar, trocar a cor e guardar.
+- Layout salvo por sala no banco e sincronizado em tempo real; servidor valida dono, estoque, posição e cor.
+- Personagens passam atrás ou na frente dos móveis conforme a posição vertical; balões ficam sempre por cima.
 
 ### Fase 5: revisão do MVP
 1. **Segurança:**

@@ -209,13 +209,11 @@ body {
   animation-name: ttt-breathe-scale;
 }
 
+/* Cinema lounge floor (handoff v4): light grey with a faint 24 px checker. The room itself draws its own scene (Lounge.tsx). */
 .lounge-floor {
-  background-color: #17172b;
-  background-image:
-    linear-gradient(45deg, rgba(139, 92, 246, 0.08) 25%, transparent 25%, transparent 75%, rgba(139, 92, 246, 0.08) 75%),
-    linear-gradient(45deg, rgba(139, 92, 246, 0.08) 25%, transparent 25%, transparent 75%, rgba(139, 92, 246, 0.08) 75%);
+  background-color: #c7c7c7;
+  background-image: repeating-conic-gradient(rgba(0, 0, 0, 0.04) 0% 25%, transparent 0% 50%);
   background-size: 48px 48px;
-  background-position: 0 0, 24px 24px;
 }
 
 @keyframes bob {

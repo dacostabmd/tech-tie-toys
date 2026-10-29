@@ -317,7 +317,8 @@ export function RoomScreen({ params }: { params: Promise<{ id: string }> }) {
               style={fill}
             >
               {/* Video */}
-              <Panel id="player" defaultSize="62" minSize="25">
+              {/* Social rooms give the lounge more room by default: the scene scales with its panel. */}
+              <Panel id="player" defaultSize={social ? "46" : "62"} minSize="25">
                 <Card
                   padding="xs"
                   style={{
@@ -501,7 +502,18 @@ export function RoomScreen({ params }: { params: Promise<{ id: string }> }) {
                           }}
                         >
                           {activeTab === "lounge" && social && (
-                            <Lounge presence={state.presence} chat={state.chat} mySocketId={room.socket.id} onMove={room.move} />
+                            <Lounge
+                              presence={state.presence}
+                              chat={state.chat}
+                              mySocketId={room.socket.id}
+                              onMove={room.move}
+                              furniture={state.furniture}
+                              furniturePlaced={state.furniturePlaced}
+                              onFurnitureChange={room.setFurniture}
+                              me={me}
+                              onMe={setMe}
+                              isOwner={isOwner}
+                            />
                           )}
                           {activeTab === "ai" && <AiNotes item={current} />}
                           {activeTab === "queue" && <Queue room={room} state={state} meId={me.id} />}

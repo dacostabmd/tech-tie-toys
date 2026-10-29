@@ -50,6 +50,8 @@ export const LIMITS = {
   queuePerUser: { limit: 10, windowMs: 60_000 },
   movePerSocket: { limit: 20, windowMs: 1_000 },
   modPerUser: { limit: 20, windowMs: 60_000 },
+  furniPerUser: { limit: 30, windowMs: 10_000 },
+  furniBuyPerUser: { limit: 30, windowMs: 60_000 },
 } satisfies Record<string, Limit>;
 
 export function tooMany(retryAfterS: number) {

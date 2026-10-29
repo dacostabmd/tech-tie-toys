@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ColorSchemeScript, createTheme, mantineHtmlProps } from "@mantine/core";
 import { CharacterStyles } from "@/components/character/Character";
+import { FurnitureStyles } from "@/components/lounge/Furniture";
 import { LoginIntroHost } from "@/components/LoginIntro";
 import { COLOR_SCHEME_KEY, ThemeProvider } from "@/components/ThemeProvider";
 import "@mantine/core/styles.css";
@@ -59,6 +60,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {/* Character CSS once for the whole app; every <Character> uses withStyles={false}. */}
         <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden>
           <CharacterStyles />
+          <FurnitureStyles />
         </svg>
         <ThemeProvider theme={theme}>
           {children}

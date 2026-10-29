@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AFK_AFTER_MS } from "@/lib/avatar";
 import { getSocket } from "@/lib/client";
+import type { PlacedFurniture } from "@/components/lounge/catalog";
+import type { FurnitureCounts } from "@/lib/lounge";
 import type { ChatMessage, MediaKind, NowPlaying, Presence, QueueItem, RoomModeration, RoomState, StreamInfo } from "@/lib/types";
 
 type Ack = { ok: boolean; error?: string };
@@ -54,6 +56,7 @@ export function useRoom(roomId: string, onTokens?: (tokens: number) => void) {
         setState((s) =>
           s ? { ...s, presence: s.presence.map((p) => (p.socketId === socketId ? { ...p, x, y } : p)) } : s,
         ),
+      "furni:update": (furniture: PlacedFurniture[]) => patch({ furniture }),
       "stream:update": (stream: StreamInfo | null) => patch({ stream }),
       "tokens:update": ({ tokens }: { tokens: number }) => onTokensRef.current?.(tokens),
       "room:kicked": ({ minutes }: { minutes: number }) =>
@@ -115,6 +118,13 @@ export function useRoom(roomId: string, onTokens?: (tokens: number) => void) {
     mute: (userId: number, minutes: number) => emitAck("mod:mute", { userId, minutes }),
     kick: (userId: number) => emitAck("mod:kick", { userId }),
     move: (x: number, y: number) => socket.emit("presence:move", { x, y }),
+    /** Saves a new lounge layout (owner only). Shows it right away; the server puts it back if it refuses. */
+    setFurniture: async (furniture: PlacedFurniture[]) => {
+      setState((s) => (s ? { ...s, furniture } : s));
+      const res = (await emitAck("furni:set", { furniture })) as Ack & { placed?: FurnitureCounts };
+      if (res.ok && res.placed) setState((s) => (s ? { ...s, furniturePlaced: res.placed } : s));
+      return res;
+    },
     startStream: (kind: "screen" | "camera") => emitAck("stream:start", { kind }),
     stopStream: () => socket.emit("stream:stop"),
   };
